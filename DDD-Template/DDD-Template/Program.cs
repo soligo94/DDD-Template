@@ -1,25 +1,97 @@
+using Ardalis.GuardClauses;
+using Ardalis.ListStartupServices;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
+using DDD_Template.Core;
+using DDD_Template.Infrastructure;
+using DDD_Template.Infrastructure.Data;
+using FastEndpoints;
+using FastEndpoints.Swagger;
+using Serilog;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
 
-builder.Services.AddControllers();
+builder.Host.UseSerilog((_, config) => config.ReadFrom.Configuration(builder.Configuration));
+
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.CheckConsentNeeded = context => true;
+    options.MinimumSameSitePolicy = SameSiteMode.None;
+});
+
+string? connectionString = builder.Configuration.GetConnectionString("Database");
+Guard.Against.Null(connectionString);
+builder.Services.AddApplicationDbContext(connectionString);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddFastEndpoints();
+builder.Services.SwaggerDocument(o =>
+{
+    o.ShortSchemaNames = true;
+});
+
+// add list services for diagnostic purposes - see https://github.com/ardalis/AspNetCoreStartupServices
+builder.Services.Configure<ServiceConfig>(config =>
+{
+    config.Services = new List<ServiceDescriptor>(builder.Services);
+
+    // optional - default path to view services is /listallservices - recommended to choose your own path
+    config.Path = "/listservices";
+});
+
+builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
+{
+    containerBuilder.RegisterModule(new DefaultCoreModule());
+    containerBuilder.RegisterModule(new AutofacInfrastructureModule(builder.Environment.IsDevelopment()));
+});
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    /*app.UseSwagger();
+    app.UseSwaggerUI();*/
+    app.UseDeveloperExceptionPage();
+    app.UseShowAllServicesMiddleware();
 }
+else
+{
+    app.UseDefaultExceptionHandler(); // from FastEndpoints
+    app.UseHsts();
+}
+
+app.UseFastEndpoints();
+app.UseSwaggerGen(); // FastEndpoints middleware
 
 app.UseHttpsRedirection();
 
-app.UseAuthorization();
-
-app.MapControllers();
+SeedDatabase(app);
 
 app.Run();
+
+static void SeedDatabase(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    var services = scope.ServiceProvider;
+
+    try
+    {
+        var context = services.GetRequiredService<AppDbContext>();
+        //                    context.Database.Migrate();
+        context.Database.EnsureCreated();
+        SeedData.Initialize(services);
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred seeding the DB. {exceptionMessage}", ex.Message);
+    }
+}
+
+// Make the implicit Program.cs class public, so integration tests can reference the correct assembly for host building
+public partial class Program
+{
+}
