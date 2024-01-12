@@ -1,0 +1,6 @@
+﻿################################################################################
+# Este archivo .gitignore ha sido creado automáticamente por Microsoft(R) Visual Studio.
+################################################################################
+
+/DDD-Template/.vs/DDD-Template
+/DDD-Template/DDD-Template/obj
