@@ -4,3 +4,6 @@
 
 /DDD-Template/.vs/DDD-Template
 /DDD-Template/DDD-Template/obj
+/DDD-Template/DDD-Template.Application/obj
+/DDD-Template/DDD-Template.Core/obj
+/DDD-Template/DDD-Template.Infrastructure/obj
